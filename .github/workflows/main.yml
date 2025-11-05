@@ -5,9 +5,8 @@ on:
     branches: ["main"]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/nextjsapp
-
+  IMAGE_NAME: nextjsapp
+  IMAGE_REGISTRY: ghcr.io/checho0001  # lowercase username
 
 jobs:
   build-and-push:
@@ -16,7 +15,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
@@ -25,7 +24,7 @@ jobs:
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -35,8 +34,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/checho0001/nextjsapp:latest
-            ${{ env.REGISTRY }}/checho0001/nextjsapp:${{ github.sha }}
+            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   deploy:
     needs: build-and-push
@@ -49,20 +48,25 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_KEY }}
           script: |
-            # Install docker if missing
+            # Ensure Docker is installed
             if ! command -v docker &> /dev/null; then
               sudo apt update -y
               sudo DEBIAN_FRONTEND=noninteractive apt install -y docker.io
             fi
 
-            # Login to GHCR
+            # Non-interactive login to GHCR
             echo "${{ secrets.GHCR_TOKEN }}" | sudo docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
 
-            # Set image variable (lowercase)
-            IMAGE="ghcr.io/${{ github.repository_owner }}/nextjsapp:latest"
+            # Use SHA-tagged image
+            IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_SHA}"
 
-            # Pull, stop, remove, and run container
-            sudo docker pull $IMAGE
+            # Stop and remove old container if exists
             sudo docker stop nextjs-app || true
             sudo docker rm nextjs-app || true
+
+            # Pull and run new container
+            sudo docker pull $IMAGE
             sudo docker run -d --name nextjs-app -p 80:3000 $IMAGE
+
+            # Optional: cleanup dangling images
+            sudo docker image prune -f
