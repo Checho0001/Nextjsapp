@@ -1,20 +1,19 @@
-# Use official Node.js image
-FROM node:18
-
-# Set working directory
+# Stage 1 – Build the Next.js app
+FROM node:18 AS builder
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
-
-# Copy rest of the app
 COPY . .
+RUN npm run build
 
-# Expose the port React runs on
+# Stage 2 – Run the production build
+FROM node:18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app ./
+
+# Expose the production port
 EXPOSE 3000
 
-# Start the app
+# Start Next.js in production mode
 CMD ["npm", "start"]
